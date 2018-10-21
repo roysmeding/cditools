@@ -58,7 +58,9 @@ class OuterDecoder(object):
         decoder.size(*self.size)
 
         for n, image in enumerate(decoder.decode_all_images()):
-            image.convert(mode='RGB').save('{:s}.img{:04d}.png'.format(self.filename, n))
+            outfn = '{:s}.img{:04d}.png'.format(self.filename, n)
+            print('Saving image {:s}'.format(outfn))
+            image.convert(mode='RGB').save(outfn)
 
 args = parser.parse_args()
 

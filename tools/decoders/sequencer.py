@@ -72,13 +72,15 @@ class Sequencer(object):
             while True:
                 self.decoder.set_output('{:s}.rec{:04d}'.format(basename, record))
 
+                no_blocks = True
                 for block in self.cdifile.play(mask, 1):
                     yield block
-                else:
-                    record += 1
-                    continue
+                    no_blocks = False
 
-                break
+                if no_blocks:
+                    break
+
+                record += 1
 
         else:
             self.decoder.set_output(basename)

@@ -23,10 +23,12 @@ group = parser.add_mutually_exclusive_group(required=True)
 group.add_argument('cmdfile', nargs='?', help='Command file containing a sequence of reads to feed to the decoder.')
 group.add_argument('--file', '-f', metavar='SPEC', action='append', dest='files', help='A specific filename, and optional channels / records, to decode.')
 
-parser.add_argument('-y', type=int, help='Initial luminance (try 0 first)')
-parser.add_argument('-u', type=int, help='Initial chrominance U (try 0 first)')
-parser.add_argument('-v', type=int, help='Initial chrominance V (try 0 first)')
+parser.add_argument('-y', type=int, help='Initial luminance, default is 0')
+parser.add_argument('-u', type=int, help='Initial chrominance U, default is 0')
+parser.add_argument('-v', type=int, help='Initial chrominance V, default is 0')
 
+parser.add_argument('--width',  '-X', type=int, help='Image width to use, default is 384.')
+parser.add_argument('--height', '-Y', type=int, help='Image height to use, default is 280.')
 
 class OuterDecoder(object):
     def __init__(self, args):
@@ -36,16 +38,24 @@ class OuterDecoder(object):
         const_U = 0 if args.u is None else args.u
         const_V = 0 if args.v is None else args.v
 
+        w = 384 if args.width  is None else args.width
+        h = 280 if args.height is None else args.height
+
         self.iv_func = lambda y: (const_Y, const_U, const_V)
+        self.size = (w, h)
 
     def set_output(self, filename):
         self.filename = filename
 
-    def decode(self, blocks):
-        video_blocks = (block for block in blocks if block.subheader.video and block.subheader.coding.encoding == cdi.sector.VideoCoding.ENCODING_DYUV)
+    def _video_blocks(self, blocks):
+        for block in blocks:
+            if block.subheader.video and block.subheader.coding.encoding == cdi.sector.VideoCoding.ENCODING_DYUV:
+                yield block
 
-        decoder = cdi.formats.dyuv.DYUVDecoder(video_blocks)
+    def decode(self, blocks):
+        decoder = cdi.formats.dyuv.DYUVDecoder(self._video_blocks(blocks))
         decoder.initial_values(self.iv_func)
+        decoder.size(*self.size)
 
         for n, image in enumerate(decoder.decode_all_images()):
             image.convert(mode='RGB').save('{:s}.img{:04d}.png'.format(self.filename, n))

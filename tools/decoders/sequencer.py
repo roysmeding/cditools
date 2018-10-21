@@ -75,9 +75,10 @@ class Sequencer(object):
                 for block in self.cdifile.play(mask, 1):
                     yield block
                 else:
-                    break
+                    record += 1
+                    continue
 
-                record += 1
+                break
 
         else:
             self.decoder.set_output(basename)

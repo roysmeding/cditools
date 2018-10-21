@@ -37,13 +37,7 @@ class DYUVDecoder(object):
         self.width  = 384
         self.height = 240
 
-        try:
-            self.cur_block = next(self.blocks)
-            self.block_pos = 0
-            self.eof = False
-
-        except StopIteration:
-            self.eof = True
+        self._next_block()
 
     def initial_values(self, iv_func):
         self.iv_func = iv_func
@@ -51,6 +45,15 @@ class DYUVDecoder(object):
     def size(self, w, h):
         self.width  = w
         self.height = h
+
+    def _next_block(self):
+        try:
+            self.cur_block = next(self.blocks)
+            self.block_pos = 0
+            self.eof = False
+
+        except StopIteration:
+            self.eof = True
 
     def decode_image(self):
         """Decodes a single image."""
@@ -93,20 +96,18 @@ class DYUVDecoder(object):
                 Vline.append(Vprev)
 
                 if self.block_pos >= self.cur_block.data_size:
-                    try:
-                        self.cur_block = next(self.blocks)
-                        self.block_pos = 0
+                    self._next_block()
 
-                    except StopIteration:
-                        self.cur_block = None
-                        self.block_pos = None
-                        self.eof = True
-
+                    if self.eof:
                         raise ValueError("Unexpected EOF in middle of image")
 
             Y.append(Yline)
             U.append(np.interp(xr, xa, Uline))
             V.append(np.interp(xr, xa, Vline))
+
+        # images only ever start at the start of a block so move to the next one.
+        if self.block_pos > 0:
+            self._next_block()
 
         Y = np.array(Y, dtype='uint8')
         U = np.array(U, dtype='uint8')

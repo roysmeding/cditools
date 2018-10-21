@@ -45,6 +45,7 @@ class OuterDecoder(object):
         self.size = (w, h)
 
     def set_output(self, filename):
+        self.image_number = 0
         self.filename = filename
 
     def _video_blocks(self, blocks):
@@ -57,10 +58,11 @@ class OuterDecoder(object):
         decoder.initial_values(self.iv_func)
         decoder.size(*self.size)
 
-        for n, image in enumerate(decoder.decode_all_images()):
-            outfn = '{:s}.img{:04d}.png'.format(self.filename, n)
+        for image in decoder.decode_all_images():
+            outfn = '{:s}.img{:04d}.png'.format(self.filename, self.image_number)
             print('Saving image {:s}'.format(outfn))
             image.convert(mode='RGB').save(outfn)
+            self.image_number += 1
 
 args = parser.parse_args()
 

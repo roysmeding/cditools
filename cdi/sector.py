@@ -87,9 +87,9 @@ class Subheader(object):
 
     @property
     def form1(self):
-        """True for all Form 2 sectors, False otherwise.
+        """True for all Form 1 sectors, False otherwise.
         
-        Form 2 sectors contain less data, but more error correction."""
+        Form 1 sectors contain less data, but more error correction."""
 
         return not self.form2
 

@@ -1,7 +1,6 @@
 import datetime
 
 from .basic_types import *
-from .file_stream import FileStream
 
 # the directory entry datetime format
 def dir_datetime(seq):
@@ -38,24 +37,11 @@ class FileFlags(object):
     hidden = _flag(0, "The file is hidden and does not usually appear in\
             directory listings.")
 
-class ChannelInfo(object):
-    def __init__(self):
-        self.n_audio = 0
-        self.n_video = 0
-        self.n_data  = 0
-        self.n_empty = 0
-
-class RecordInfo(object):
-    def __init__(self, f, start_idx):
-        self.file      = f
-        self.start_idx = start_idx
-        self.channels  = {}
-
 class File(object):
     def __init__(self, sector, offset, directory):
-        self.sector = sector
-        self.image = self.sector.image
-        self.offset = offset
+        self.sector    = sector
+        self.image     = self.sector.image
+        self.offset    = offset
         self.directory = directory
 
         self.record_size = number(self.get_data(0, 1))
@@ -65,6 +51,8 @@ class File(object):
         """The number of blocks at the beginning of the file reserved for
         extended attribute information. The format of the extended attribute
         record is not defined and is reserved for application use."""
+
+        assert self.EAR_size == 0, "The CD-I spec is unclear on how to handle the EAR record length field. Let the author know if you encounter this, so we can figure out how it actually works."
 
         self.first_lbn = number(self.get_data(6, 10))
         """The logical block number of the first block of the file."""
@@ -157,71 +145,28 @@ class File(object):
             return self.directory.full_name + '/' + self.name
 
     def get_data(self, start, end):
-        return self.sector.get_data(self.offset+start, self.offset+end)
+        return self.sector.get_data(self.offset + start, self.offset + end)
 
-    @property
-    def records(self):
-        if not hasattr(self, '_records'):
-            self._compute_record_info()
-       
-        return self._records
+    def blocks(self):
+        """Yields all blocks belonging to the file in order"""
 
-    def _compute_record_info(self):
-        self._records = []
-        record = None
-
-        for block in self.get_blocks():
-            sh = block.subheader
-
-            if record is None:
-                record = RecordInfo(self, block.index)
-            
-            if not sh.channel_number in record.channels:
-                record.channels[sh.channel_number] = ChannelInfo()
-
-            if   sh.audio:
-                record.channels[sh.channel_number].n_audio += 1
-            elif sh.video:
-                record.channels[sh.channel_number].n_video += 1
-            elif sh.data:
-                record.channels[sh.channel_number].n_data  += 1
-            else:
-                record.channels[sh.channel_number].n_empty += 1
-
-            if block.subheader.eor or block.subheader.eof:
-                self._records.append(record)
-                record = None
-
-    def get_blocks(self, record=None, channel=None):
-        """Generates the blocks belonging to the file in order"""
-        if record is None:
-            idx = self.image.lbn2idx(self.first_lbn)
-            cur_record = 0
-        else:
-            idx = self.records[record].start_idx
-            cur_record = record
+        idx = 0
 
         while True:
-            block = self.image.get_sector(idx)
+            block = self.image.get_sector(self.image.lbn2idx(self.first_lbn + idx))
             sh = block.subheader
-
-            num_match = (self.number == 0) or (sh.file_number == self.number)
-            rec_match = (record  is None) or (cur_record == record)
-            cha_match = (channel is None) or (sh.channel_number == channel)
-
-            if num_match and rec_match and cha_match:
-                yield block
-
-            if (record is None) and sh.eof:
-                break
-
-            if sh.eor:
-                if (not record is None) and (cur_record == record):
-                    break
-
-                cur_record += 1
 
             idx += 1
 
-    def open(self, record=None, channel=None):
-        return FileStream(self, record, channel)
+            if self.number != 0:
+                # file might be interleaved
+                if sh.file_number != self.number:
+                    # block does not belong to this file
+                    continue
+
+            # at this point, the block belongs to this file.
+            yield block
+
+            if sh.eof:
+                # end of file
+                break

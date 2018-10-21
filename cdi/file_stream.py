@@ -1,15 +1,23 @@
 import io
 
 class FileStream(object):
-    def __init__(self, file_record, record=None, channel=None):
-        self.file_record = file_record
-        self.image = self.file_record.sector.image
+    """Provides simpler access to just the file data itself"""
+
+    def __init__(self, file_entry, num_records, channels=None):
+        self.file_entry = file_entry
+        self.image = self.file_entry.image
         self.file_pos = 0
+
+        if record is None:
+            self.blocks = self.file_entry.blocks()
+        elif channel is None:
+
 
         self.rt = not ((record is None) and (channel is None))
         
-        self.blocks = self.file_record.get_blocks(record, channel)
+        self.blocks = self.file_entry.blocks()
         self.cur_block = next(self.blocks)
+        self.rt = self.cur_block.subheader.rt
         self.cur_block_pos = 0
         self.eof = False
 

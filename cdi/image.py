@@ -56,6 +56,11 @@ class Image(object):
             if d.name == '\x00':
                 return d
 
+    def files(self):
+        for d in self.path_table.directories:
+            for f in d.contents:
+                yield f.full_name
+
     def get_file(self, fname):
         for d in self.path_table.directories:
             for f in d.contents:

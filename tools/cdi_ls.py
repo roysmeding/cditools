@@ -11,11 +11,12 @@ import cdi
 # parse command-line arguments
 parser = argparse.ArgumentParser(description='List all directories and files from a CD-I disc image')
 parser.add_argument('discfile', help='Disc image file to decode from')
-parser.add_argument('--no-cd-headers', '-H', dest='headers', action='store_false', help='Image file does not have CD headers')
+parser.add_argument('--realtime', action='store_true', help='Only list realtime files')
+parser.add_argument('--plain', action='store_true', help='List only file names, separated by newlines.')
 
 args = parser.parse_args()
 
-img = cdi.Image(args.discfile, headers=args.headers)
+img = cdi.Image(args.discfile)
 
 ATTR_FILL = "-"
 
@@ -60,33 +61,47 @@ def get_flags(f):
     return flags
 
 def print_dir(d, depth=0, root=True):
-    for i, f in enumerate(d.contents):
-        first = (i == 0)
-        last = (i == len(d.contents)-1)
+    for f in d.contents:
 
         # general per-file metadata
-        sys.stdout.write(
-                "{:10s}  {:5d}  {:5d}  {:20s}  ".format(
-                    format_attributes(f.attributes),
-                    f.owner_group,
-                    f.owner_user,
-                    f.creation_date.strftime('%b %d %Y %H:%M:%S')
-                )
-            )
-
-        # tree view
         if f.is_directory:
-            sys.stdout.write("{:10d}        {:28s}\n".format(f.size, f.full_name))
+            if args.plain or args.realtime:
+                print_dir(f.directory_record, depth+1)
+            else:
+                sys.stdout.write(
+                        '{:10s}  {:5d}  {:5d}  {:20s}  {:10d}        {:28s}\n'.format(
+                            format_attributes(f.attributes),
+                            f.owner_group,
+                            f.owner_user,
+                            f.creation_date.strftime('%b %d %Y %H:%M:%S'),
+                            f.size,
+                            f.full_name
+                        )
+                    )
 
-            print_dir(f.directory_record, depth+1)
-
-            sys.stdout.write("\n")
+                print_dir(f.directory_record, depth+1)
+                sys.stdout.write('\n')
 
         else:
-            sys.stdout.write("{:10d}  {:4s}  {:28s}\n".format(
-                    f.size,
-                    get_flags(f),
-                    f.full_name
-                ))
+            file_flags = get_flags(f)
+
+            if args.realtime and file_flags[0] != 'r':
+                continue
+
+            if args.plain:
+                sys.stdout.write('{:s}\n'.format(f.full_name))
+                
+            else:
+                sys.stdout.write(
+                        '{:10s}  {:5d}  {:5d}  {:20s}  {:10d}  {:4s}  {:28s}\n'.format(
+                            format_attributes(f.attributes),
+                            f.owner_group,
+                            f.owner_user,
+                            f.creation_date.strftime('%b %d %Y %H:%M:%S'),
+                            f.size,
+                            file_flags,
+                            f.full_name
+                        )
+                    )
 
 print_dir(img.root)

@@ -2,7 +2,8 @@ from .basic_types import *
 from .file import *
 
 class Directory(object):
-    def __init__(self, sector, offset):
+    def __init__(self, path_table, sector, offset):
+        self.path_table = path_table
         self.sector = sector
         self.offset = offset
 
@@ -47,7 +48,7 @@ class Directory(object):
 
     @property
     def parent_dir(self):
-        return self.sector.image.path_table.directories[self.parent-1]
+        return self.path_table.directories[self.parent-1]
 
     @property
     def size(self):

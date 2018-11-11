@@ -15,10 +15,9 @@ ENDC = '\033[0m'
 # parse command-line arguments
 parser = argparse.ArgumentParser(description='Lists information about a CD-I disc image.')
 parser.add_argument('image_file',  help='Image file to open')
-parser.add_argument('--headers', '-H', action='store_true', help='Image file has CD headers')
 
 args = parser.parse_args()
-img = cdi.Image(args.image_file, headers=args.headers)
+img = cdi.Image(args.image_file)
 
 for idx, dl in enumerate(img.disc_labels):
     print((BOLD+"Disc label"+ENDC+" #{:d}: \"{:s}\"").format(idx, dl.volume_id))
@@ -45,24 +44,20 @@ for idx, dl in enumerate(img.disc_labels):
 dl = img.disc_labels[0]
 
 # special files
-def get_file(filename):
-    for f in img.root.contents:
-        if f.name == filename:
-            return f
-
-    raise ValueError("File not found")
-
 def _normalize_newlines(string):
     import re
     return re.sub(r'(\r\n|\r|\n)', '\n', string)
 
+def read_file(f):
+    return b''.join((blk.get_data() for blk in f.blocks()))
+
 def print_file(header, filename):
     print(BOLD+header+ENDC)
-    print(_normalize_newlines(get_file(filename).open().read().decode('iso-8859-1')))
+    print(_normalize_newlines(read_file(img.get_file(filename)).decode('iso-8859-1')))
     print()
 
-print_file("Copyright file", dl.copyright_file)
-print_file("Abstract file",  dl.abstract_file)
-print_file("Bibliographic file", dl.biblio_file)
+print_file("Copyright file (/{})".format(dl.copyright_file), '/'+dl.copyright_file)
+print_file("Abstract file (/{})".format(dl.abstract_file),  '/'+dl.abstract_file)
+print_file("Bibliographic file (/{})".format(dl.biblio_file), '/'+dl.biblio_file)
 
 print((BOLD+"Application to start when mounted"+ENDC+": {:s}").format(dl.app_id))

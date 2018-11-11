@@ -1,5 +1,25 @@
 from .basic_types import *
 
+class CDHeader(object):
+    """The CD-DA disc header. Not present in every image file."""
+
+    SYNC_FIELD = b'\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00'
+    SIZE = 16
+
+    @staticmethod
+    def _bcd(v):
+        msn, lsn = (v & 0xf0) >> 4, v & 0x0f
+        assert msn < 10 and lsn < 10
+        return msn * 10 + lsn
+
+    def __init__(self, data):
+        assert data[:12] == self.SYNC_FIELD
+
+        self.minutes = self._bcd(data[12])
+        self.seconds = self._bcd(data[13])
+        self.sectors = self._bcd(data[14])
+        self.mode = data[15]
+
 class Subheader(object):
     """A sector sub-header"""
     SIZE = 8
@@ -128,13 +148,18 @@ class AudioCoding(Coding):
     def __init__(self, coding_raw):
         super().__init__(coding_raw)
 
+
+    @property
+    def layout(self):
+        return self._field(0, 2)
+
     @property
     def mono(self):
-        return self._field(0, 2) == 0
+        return self.layout == 0
 
     @property
     def stereo(self):
-        return self._field(0, 2) == 1
+        return self.layout == 1
 
 
     SAMPLE_RATE_37800 = 0
@@ -170,7 +195,6 @@ class VideoCoding(Coding):
     def __init__(self, coding_raw):
         super().__init__(coding_raw)
 
-
     ENCODING_CLUT4    =  0
     ENCODING_CLUT7    =  1
     ENCODING_CLUT8    =  2
@@ -197,7 +221,6 @@ class VideoCoding(Coding):
     def resolution(self):
         return self._field(4, 2)
 
-
     @property
     def odd_lines(self):
         """If error concealment is to be used, this flag indicates whether the
@@ -214,26 +237,25 @@ class VideoCoding(Coding):
 
         return not self.odd_lines
 
-
 class Sector(object):
-    CD_HEADER_SIZE = 16         # CD sector header size
-
     def __init__(self, image, index):
         self.image = image
-
-        if self.image.headers:
-            self.full_size = 2336 + Sector.CD_HEADER_SIZE
-        else:
-            self.full_size = 2336
-
-        if index > (image.image_file.size() // self.full_size):
-            raise EOFError("EOF on image")
-
         self.index = index
 
-        self.offset = self.index * self.full_size + (Sector.CD_HEADER_SIZE if self.image.headers else 0)
+        offset = index * self.image.sector_size
 
-        self.subheader = Subheader(self.image.image_file[self.offset:self.offset + Subheader.SIZE])
+        if (offset + self.image.sector_size) > image.image_file.size():
+            raise EOFError("EOF on image")
+
+        if self.image.headers:
+            self.header = CDHeader(self.image.image_file[offset:offset + CDHeader.SIZE])
+            offset += CDHeader.SIZE
+        else:
+            self.header = None
+
+        self.subheader = Subheader(self.image.image_file[offset:offset + Subheader.SIZE])
+
+        self.data_offset = offset + Subheader.SIZE
 
         if self.subheader.form1:
             self.data_size = 2048
@@ -241,14 +263,10 @@ class Sector(object):
             self.data_size = 2324
 
     def get_data(self, start=None, end=None):
-        _start = self.offset + Subheader.SIZE
-        _end = _start + self.data_size
-
         if start is None:
-            return self.image.image_file[_start:_end]
+            start = 0
 
-        elif end is None:
-            return self.image.image_file[_start:_end][start]
+        if end is None:
+            end = self.data_size
 
-        else:
-            return self.image.image_file[_start:_end][start:end]
+        return self.image.image_file[start + self.data_offset:end + self.data_offset]

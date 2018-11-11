@@ -87,7 +87,8 @@ class AudioDecoder(object):
             self.sample_depth = 4
 
         else:
-            raise ValueError("Reserved sample depth specified in encoding")
+            # reserved sample rate, but in the one example I have of audio using this, it seems to use 4.
+            self.sample_depth = 4
 
 
         if   sh.coding.sample_rate == AudioCoding.SAMPLE_RATE_18900:
@@ -137,11 +138,11 @@ class AudioDecoder(object):
 
                 for unit in range(4):
                     R, F = extract_params(sound_group[unit])
-                    decoder.set_params(8-R, F)
+                    self.decoder.set_params(8-R, F)
 
                     for sample in range(AudioDecoder.SAMPLES_PER_UNIT):
-                        D = ord(sound_group[16+unit+4*sample])
-                        outsamples.append(decoder.propagate(D))
+                        D = sound_group[16+unit+4*sample]
+                        outsamples.append(self.decoder.propagate(D))
 
             elif self.sample_depth == 4:
                 # level B or C audio

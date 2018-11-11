@@ -1,120 +1,92 @@
 import struct
-import numpy as np
-
-import PIL.Image
+import array
 
 from ..sector import VideoCoding
 
-class DYUVDecoder(object):
-    """Decodes CD-I DYUV video data from a disc file"""
+from .image import Image
 
+class DYUVImage(Image):
     # DPCM quantization table
     QUANT_TABLE = [
-              0,
-              1,
-              4,
-              9,
-             16,
-             27,
-             44,
-             79,
-            128,
-            177,
-            212,
-            229,
-            240,
-            247,
-            252,
-            255
-        ]
+          0,   1,   4,   9,
+         16,  27,  44,  79,
+        128, 177, 212, 229,
+        240, 247, 252, 255
+    ]
 
-    def __init__(self, blocks):
-        """Create a new decoder."""
+    def __init__(self, f, timestamp, width, height, yuv):
+        assert width  % 2 == 0, 'Width must be a multiple of 2 pixels.'
+        assert height % 2 == 0, 'Height must be a multiple of 2 pixels.'
 
-        self.blocks = blocks
-        self.iv_func = lambda y: (0, 0, 0)
+        super().__init__(f, timestamp, width, height)
 
-        self.width  = 384
-        self.height = 240
+        self.initial_values = yuv
 
-        self._next_block()
+    def _read_data(self, f):
+        self.data = f.read(self.width * self.height)
 
-    def initial_values(self, iv_func):
-        self.iv_func = iv_func
-
-    def size(self, w, h):
-        self.width  = w
-        self.height = h
-
-    def _next_block(self):
-        try:
-            self.cur_block = next(self.blocks)
-            self.block_pos = 0
-            self.eof = False
-
-        except StopIteration:
-            self.eof = True
-
-    def decode_image(self):
-        """Decodes a single image."""
-
-        Y = []
-        U = []
-        V = []
-
-        def dpcm(prev, delta):
-            return (prev + self.QUANT_TABLE[delta]) % 256
-
-        # used for upsampling the half-resolution U and V components
-        xa = np.linspace(0, self.width-2, self.width//2)
-        xr = np.linspace(0, self.width-1, self.width)
+    def to_yuv422p(self):
+        """Returns the image data as YUV420p with 8-bit components, which is basically the native pixel format (with delta coding removed)."""
+        Y = array.array('B', (0 for _ in range(self.width * self.height     )))
+        U = array.array('B', (0 for _ in range(self.width * self.height // 2)))
+        V = array.array('B', (0 for _ in range(self.width * self.height // 2)))
 
         for y in range(self.height):
-            Yline = []
-            Uline = []
-            Vline = []
+            Yprev, Uprev, Vprev = self.initial_values[y]
 
-            Yprev, Uprev, Vprev = self.iv_func(y)
-
-            for x in range(self.width//2):
-                B0, B1 = struct.unpack_from('BB', self.cur_block.get_data(self.block_pos, self.block_pos + 2))
-                self.block_pos += 2
+            for x in range(0, self.width, 2):
+                idx = y * self.width + x
+                B0, B1 = struct.unpack('BB', self.data[idx:idx + 2])
 
                 dU, dY0 = (B0 & 0xF0) >> 4, B0 & 0x0F
                 dV, dY1 = (B1 & 0xF0) >> 4, B1 & 0x0F
 
-                Yprev = dpcm(Yprev, dY0)
-                Yline.append(Yprev)
+                Yprev = (Yprev + self.QUANT_TABLE[dY0]) & 0xFF
+                Y[idx] = Yprev
 
-                Uprev = dpcm(Uprev, dU)
-                Uline.append(Uprev)
+                Yprev = (Yprev + self.QUANT_TABLE[dY1]) & 0xFF
+                Y[idx + 1] = Yprev
 
-                Yprev = dpcm(Yprev, dY1)
-                Yline.append(Yprev)
+                Uprev = (Uprev + self.QUANT_TABLE[dU ]) & 0xFF
+                U[idx // 2] = Uprev
 
-                Vprev = dpcm(Vprev, dV)
-                Vline.append(Vprev)
+                Vprev = (Vprev + self.QUANT_TABLE[dV ]) & 0xFF
+                V[idx // 2] = Vprev
 
-                if self.block_pos >= self.cur_block.data_size:
-                    self._next_block()
+        return (Y, U, V)
 
-                    if self.eof:
-                        raise ValueError("Unexpected EOF in middle of image")
+    def to_yuv444p(self):
+        """Returns the image data as YUV444p with 8-bit components, i.e. with U and V interpolated to the same resolution as Y."""
+        Y, U, V = self.to_yuv422p()
 
-            Y.append(Yline)
-            U.append(np.interp(xr, xa, Uline))
-            V.append(np.interp(xr, xa, Vline))
+        Uout = array.array('B', (0 for _ in range(self.width * self.height)))
+        Vout = array.array('B', (0 for _ in range(self.width * self.height)))
 
-        # images only ever start at the start of a block so move to the next one.
-        if self.block_pos > 0:
-            self._next_block()
+        for y in range(self.height):
+            for x in range(0, self.width, 2):
+                idx = y * self.width + x
 
-        Y = np.array(Y, dtype='uint8')
-        U = np.array(U, dtype='uint8')
-        V = np.array(V, dtype='uint8')
+                Uout[idx] = U[idx // 2]
+                if x < self.width - 2:
+                    Uout[idx + 1] = (U[idx // 2] + U[(idx // 2) + 1]) // 2
+                else:
+                    Uout[idx + 1] =  U[idx // 2]
 
-        return PIL.Image.fromarray(np.transpose([Y,U,V], [1,2,0]), mode='YCbCr')
+                Vout[idx] = V[idx // 2]
+                if x < self.width - 2:
+                    Vout[idx + 1] = (V[idx // 2] + V[(idx // 2) + 1]) // 2
+                else:
+                    Vout[idx + 1] =  V[idx // 2]
 
-    def decode_all_images(self):
-        while not self.eof:
-            yield self.decode_image()
+        return Y, Uout, Vout
+
+    def to_pil(self):
+        import PIL.Image
+        Y, U, V = self.to_yuv444p()
+        def _interleave():
+            for i in range(len(Y)):
+                yield Y[i]
+                yield U[i]
+                yield V[i]
+
+        return PIL.Image.frombytes('YCbCr', (self.width, self.height), bytes(_interleave())).convert('RGB')

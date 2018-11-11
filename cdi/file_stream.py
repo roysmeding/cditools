@@ -3,21 +3,16 @@ import io
 class FileStream(object):
     """Provides simpler access to just the file data itself"""
 
-    def __init__(self, file_entry, num_records, channels=None):
+    def __init__(self, file_entry, record=None, channel=None):
         self.file_entry = file_entry
         self.image = self.file_entry.image
         self.file_pos = 0
-
-        if record is None:
-            self.blocks = self.file_entry.blocks()
-        elif channel is None:
-
 
         self.rt = not ((record is None) and (channel is None))
         
         self.blocks = self.file_entry.blocks()
         self.cur_block = next(self.blocks)
-        self.rt = self.cur_block.subheader.rt
+        self.rt = self.cur_block.subheader.realtime
         self.cur_block_pos = 0
         self.eof = False
 
@@ -25,7 +20,7 @@ class FileStream(object):
         buf = b''
 
         if not self.rt:
-            n_left = self.file_record.size - self.file_pos
+            n_left = self.file_entry.size - self.file_pos
             if (n == -1) or (n > n_left):
                 n = n_left
 
@@ -47,7 +42,7 @@ class FileStream(object):
                 break
  
         if not self.rt:
-            if self.file_pos >= self.file_record.size:
+            if self.file_pos >= self.file_entry.size:
                 self.eof = True
 
         if n > 0:

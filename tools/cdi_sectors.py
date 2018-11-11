@@ -28,36 +28,47 @@ HEADERS=['address', 'sector', 'file', 'channel', 'type', 'filename', 'fileidx', 
 # parse command-line arguments
 parser = argparse.ArgumentParser(description='Dump sector information from a CD-I disc image')
 parser.add_argument('image_file', help='Image file to dump')
-parser.add_argument('--headers', '-H', action='store_true', help='Image file has CD headers')
+parser.add_argument('--raw', '-r', action='store_true', help='Read raw image file (do not attempt to parse disc labels, path tables, etc.). Useful for partial, corrupted or non-standard disc images.')
 args = parser.parse_args()
 
 col_widths = [len(h) for h in HEADERS]
 record_index = 0
 
-img = cdi.Image(args.image_file, headers=args.headers)
+if args.raw:
+    img = cdi.RawImage(args.image_file)
+    files_by_block = None
 
-files_by_block = {}
-for d in img.path_table.directories:
-    for f in d.contents:
-        files_by_block[f.first_block.index] = f
+else:
+    try:
+        img = cdi.Image(args.image_file)
+
+        files_by_block = {}
+        for d in img.path_table.directories:
+            for f in d.contents:
+                files_by_block[f.first_block.index] = f
+
+    except Exception as e:
+        sys.stderr.write('Failed to read path table. Using the --raw option might help.\n')
+        raise e
 
 table = []
 current_files = {}
 file_bytes    = {}
 for sector in img.get_sectors():
     row = {}
-    row['address'] = "%08X" % sector.offset
+    row['address'] = "%08X" % sector.data_offset
     row['sector']  = "%06d" % sector.index
 
     h = sector.subheader
     row['file']    = "%02d" % h.file_number
     row['channel'] = "%02d" % h.channel_number
 
-    if sector.index in files_by_block:
-        f = files_by_block[sector.index]
-        current_files[f.number] = f
-        file_bytes[f.number]    = 0
-        record_index = 0
+    if not files_by_block is None:
+        if sector.index in files_by_block:
+            f = files_by_block[sector.index]
+            current_files[f.number] = f
+            file_bytes[f.number]    = 0
+            record_index = 0
 
     if h.file_number in current_files:
         current_idx = h.file_number
@@ -120,17 +131,17 @@ for sector in img.get_sectors():
 
             if   h.coding.emphasis:
                 row['encoding'] += ", emphasis, "
-            else:
+            else: 
                 row['encoding'] += ",           "
 
-            if   h.coding.mono:
+            if   h.coding.stereo:
                 row['encoding'] += "stereo"
 
-            elif h.coding.stereo:
-                row['encoding'] += "mono"
+            elif h.coding.mono:
+                row['encoding'] += "mono  "
 
             else:
-                row['encoding'] += "<reserved channel number <{:01d}>".format(h.coding._field(0,2))
+                row['encoding'] += "<reserved channel number <{:01d}>".format(h.coding.layout)
 
     if h.data:      row['type'] = "D"
     if h.empty:     row['type'] = "E"
@@ -151,7 +162,7 @@ for sector in img.get_sectors():
     if h.eof:       record_index  = 0
 
     try:
-        file_bytes[current_idx] += sector.data_size
+        file_bytes[current_idx] += 2048
         if h.eof or (file_bytes[current_idx] >= current_files[current_idx].size):
             del current_files[current_idx]
             del file_bytes[current_idx]

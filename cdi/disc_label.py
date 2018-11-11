@@ -1,6 +1,7 @@
 import datetime
 
 from .basic_types import *
+from .path_table import PathTable
 
 def dl_datetime(seq):
     """The format of a 16-byte date and time field is recorded as a string of
@@ -37,6 +38,7 @@ class DiscLabel(object):
     def get_data(self, start, end):
         return self.sector.get_data(start, end)
 
+    @staticmethod
     def create(sector):
         t = number(sector.get_data(0, 1))
 
@@ -166,6 +168,10 @@ class StandardDiscLabel(DiscLabel):
         self.fs_version = number(self.get_data(881, 882))
         """Indicates the revision number of the file structure standard to
         which the directory search files conform. It is set to one."""
+
+    @property
+    def path_table(self):
+        return PathTable(self.sector.image.get_block(self.path_table_address), self.path_table_size)
 
 
 class TerminatorDiscLabel(DiscLabel):

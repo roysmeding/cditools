@@ -9,6 +9,6 @@ class PathTable(object):
         offset = 0
 
         while offset < self.size:
-            new_dir = Directory(self.sector, offset)
+            new_dir = Directory(self, self.sector, offset)
             self.directories.append(new_dir)
             offset += new_dir.size

@@ -130,7 +130,7 @@ class File(object):
     def directory_record(self):
         if not hasattr(self, '_directory_record'):
             self._directory_record = None
-            for d in self.image.path_table.directories:
+            for d in self.directory.path_table.directories:
                 if d.directory_address == self.first_lbn:
                     self._directory_record = d
                     break
@@ -153,7 +153,7 @@ class File(object):
         idx = 0
 
         while True:
-            block = self.image.get_sector(self.image.lbn2idx(self.first_lbn + idx))
+            block = self.image.get_block(self.first_lbn + idx)
             sh = block.subheader
 
             idx += 1
